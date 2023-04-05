@@ -348,7 +348,7 @@ exports.handler = async (event) =>
                 
                 //TODO: Additional checks regarding whether we can have a skill at a certain hero level
                 //TODO: Check if we can have an enemy skill level > 0 based on the enemy skill stats. E.g. 0 kills on all and level 1 is not possible without cheating
-                //TODO: //if level < wackyBurstUnlockLevels[i] && equippedWackyBurst == wackyBursts[i]
+                //TODO: //if level < wackyBurstUnlockLevels[i] && equippedWackyBurst == wackyBursts[i], i.e. we've equipped a skill we shouldn't have access to yet
                 if (skillLevelSum > maxSkillLevelSum)
                 {
                     flagPlayer = true;
@@ -427,12 +427,12 @@ async function updatePlayerTokenCounts(playerId, updateExpression, attributeValu
     await updatePlayerData(playerId, updateExpression, attributeValues);
 }
 
-async function getPlayerData(_playerId, projectionExpression)
+async function getPlayerData(playerId, projectionExpression)
 {
     const params = {
         TableName: playerTableName,
         Key: {
-            "id": _playerId
+            "id": playerId
         },
         ProjectionExpression: projectionExpression
     };
@@ -445,15 +445,15 @@ async function getPlayerData(_playerId, projectionExpression)
     }
 }
 
-async function updatePlayerData(_playerId, _updateExpression, _attributeValues)
+async function updatePlayerData(playerId, updateExpression, attributeValues)
 {
     const params = {
         TableName: playerTableName,
         Key: {
-            "id": _playerId
+            "id": playerId
         },
-        UpdateExpression: _updateExpression,
-        ExpressionAttributeValues:_attributeValues,
+        UpdateExpression: updateExpression,
+        ExpressionAttributeValues: attributeValues,
     };
     try {
       return documentClient.update(params).promise();
@@ -474,15 +474,15 @@ async function updateLatestChestOpenTimes(chestOpenTimes)
     await updatePlayerData(playerId, "set latestChestOpenTimes = :lcot", {":lcot": chestOpenTimes});
 }
 
-async function updateNormalMissionData(_playerId, _missionId)
+async function updateNormalMissionData(playerId, missionId)
 {
     const params = {
         TableName: playerTableName,
         Key: {
-            "id": _playerId
+            "id": playerId
         },
         UpdateExpression: "set lastNormalMissionCleared = :lnmc",
-        ExpressionAttributeValues:{":lnmc": _missionId},
+        ExpressionAttributeValues:{":lnmc": missionId},
     };
     try {
       return documentClient.update(params).promise();

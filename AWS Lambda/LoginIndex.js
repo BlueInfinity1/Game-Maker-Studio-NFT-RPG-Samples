@@ -1,4 +1,3 @@
-//aws
 const AWS = require('aws-sdk');
 AWS.config.update({region: "us-west-1"});
 const documentClient = new AWS.DynamoDB.DocumentClient({region: "us-west-1"});
@@ -7,7 +6,7 @@ const playerTableName = "WackyDungeonPlayers"; //DEV
 const tokenTableName = "WackyDungeonAccessTokens"; //DEV
 const generalTableName = "WackyDungeonGeneralTable";
 
-//CRYPTO (MOCK VALUES)
+//BLOCKCHAIN-RELATED MOCK VALUES
 const ethers = require('ethers');
 const { createAlchemyWeb3 } = require("@alch/alchemy-web3");
 const alchemyAPIKey = "_vDGebu4wFiZR3sKkb-_u5JbafUjnp1U"; //DEV
@@ -22,8 +21,7 @@ const traitContractAddress = "0x212b5D25641439A84Aa086349b3047d7C124915B";
 const web3 = createAlchemyWeb3(alchemyAPIUrl);
 
 const { v4: uuidv4 } = require('uuid');
-const accessTokenExpirationTime = 86400; //24h in secs
-
+const accessTokenExpirationTime = 86400; //24h in seconds
 
 //The login function checks that we indeed own an NFT for the game, and asks the client to sign a message with his crypto wallet. 
 //To improve security, the message will always include a nonce, which is only valid for a short period of time.
@@ -40,16 +38,13 @@ exports.handler = async (event) =>
     +"this message. This won't cost you anything!\n\n"
     +"Your login ID: "+nonce+"\n(You don't need to memorize this)"; 
 
-    const sentAccessToken = body.sentAccessToken; //TODO: Handling this
+    const sentAccessToken = body.sentAccessToken;
     
     if (sentAccessToken != undefined && sentAccessToken != "")
     {
-      if (walletAddress == undefined)
-      {
-        console.log("Undefined wallet address,should not happen with a proper client");
+      if (walletAddress == undefined) //Undefined wallet address cases should not happen with a proper client              
         return sendResponse(401, "ACCESS DENIED");
-      }
-
+      
       //verify that this accessToken matches with the one in the db
       try {
         let accessTokenData = await getTokenData(walletAddress);
@@ -63,8 +58,7 @@ exports.handler = async (event) =>
 
         if (accessTokenData.Item.accessToken.value != sentAccessToken) //the client has not sent us a valid accessToken in the login
         {
-          console.log("The sent accessToken " +sentAccessToken +" does not match the stored token "+accessTokenData.Item.accessToken.value+ 
-            ", ask the player to request a nonce and log in the long way");
+          console.log("The sent accessToken " + sentAccessToken + " does not match the stored token "+ accessTokenData.Item.accessToken.value + ", ask the player to request a nonce and log in the long way");
           return sendResponse(200, {op: 500, status: "RETRY", message: "RETRY LOGIN"});
         }
         console.log("The sent access token " + sentAccessToken + " matches the stored token " + accessTokenData.Item.accessToken.value + ", skip signature verification");
@@ -125,7 +119,6 @@ exports.handler = async (event) =>
     return sendResponse(200, {op: 500, status: "OK", NFTsOwned: {}}); //empty response, we can't login since we don't own an NFT
 
     const traitContract = new web3.eth.Contract(traitContractJSON, traitContractAddress);
-
     let walletNFTs = new Array(parseInt(NFTBalance));
     let playerRecord, NFTMetadata, metadataPayload, JSONMetadata, currNFTId;
     
@@ -224,13 +217,13 @@ async function getGameData(projectionExpression)
     }
 }
 
-async function getPlayerData(_playerId, projectionExpression)
+async function getPlayerData(playerId, projectionExpression)
 {
-    console.log("Getting data for player " + _playerId);
+    console.log("Getting data for player " + playerId);
     const params = {
         TableName: playerTableName,
         Key: {
-            "id": _playerId
+            "id": playerId
         },
         ProjectionExpression: projectionExpression
     };
@@ -261,15 +254,15 @@ async function getTokenData(walletAddress)
     }
 }
 
-async function updateTokenData(walletAddress, _updateExpression, _attributeValues)
+async function updateTokenData(walletAddress, updateExpression, attributeValues)
 {
     const params = {
         TableName: tokenTableName,
         Key: {
             "walletAddress": walletAddress
         },
-        UpdateExpression: _updateExpression,
-        ExpressionAttributeValues:_attributeValues,
+        UpdateExpression: updateExpression,
+        ExpressionAttributeValues:attributeValues,
     };
     try {
       return documentClient.update(params).promise();
@@ -287,7 +280,8 @@ function getCurrentEpochTime()
 }
 
 // Create a response
-function sendResponse(statusCode, message) {
+function sendResponse(statusCode, message) 
+{
   return {
     statusCode: statusCode,
     headers: {
