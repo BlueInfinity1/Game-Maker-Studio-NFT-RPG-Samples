@@ -29,11 +29,11 @@ const tokenContractAddress = "0x71ed54ccf010e867f8c577e447dddb77a0f6c658"; //con
 const NFTContractJSON = require("./ABI/NFTContractABI.json");
 const NFTContractAddress = "0xD6e12f46e698589aA52FAdD40EC49bFEA90aF030";
 const web3 = createAlchemyWeb3(alchemyAPIUrl);
-const walletAddress = "0xD6386f41BC951fdCAe1ba25994f0a70fc6F78afD"; //testing only
+//const walletAddress = "0xD6386f41BC951fdCAe1ba25994f0a70fc6F78afD"; //for testing only
 const alchemyProvider = new ethers.providers.AlchemyProvider(network="rinkeby", alchemyAPIKey);
+
+//THE FOLLOWING VARIABLE IS NOT IN USE SINCE SOME OF THE CODE HAS BEEN REMOVED FROM THIS SCRIPT
 const signer = new ethers.Wallet(privateKey, alchemyProvider);
-const tokenContract = new web3.eth.Contract(tokenContractJSON,tokenContractAddress);
-new ethers.Contract(tokenAddress, tokenContractJSON, signer);
 
 let seed = getCurrentEpochTime() - 1641225274;
 let rand = require('random-seed').create(seed);
@@ -45,22 +45,34 @@ let playerId;
 let tokenDropProbabilityBoostForTimedChest = 0; //use these when opening timed chests
 let tokenGainBoostForTimedChest = 0;
 
-exports.handler = async (event) => 
-{
-    initializeClearRewards();
-    
-    const body = JSON.parse(event.body);
+const SIGNING_KEY = process.env.JWT_SIGNING_KEY;
 
-    const opCode = body.op;
+exports.handler = async (event) => 
+{        
+    const body = JSON.parse(event.body);
+    
     const accessToken = body.accessToken; //NOTE: To perform any operation, we must have an access token that matches the token stored in the database for a specific player.
     //This token is earned through a legitimate login process.
+
+    try {
+        jwt.verify(accessToken, SIGNING_KEY);                
+    } catch (err) { // the access token is invalid or expired
+        
+        //Log unauthorized access so that we can view it via CloudWatch
+        console.log("UNAUTHORIZED ACCESS: Access token of player " + playerId + " is invalid or expired");
+        return sendResponse(401, {error: "Invalid or expired access token"}); //unauthorized access
+    }
+
+    initializeClearRewards();
+
+    const opCode = body.op;
     playerId = body.playerId; //NOTE: This is the NFT token id (0 to 9999 initially)
     const walletAddress = body.walletId;
     let missionId = body.missionId; 
     let saveData = body.saveData;
-    
+        
     const NFTContract = new web3.eth.Contract(NFTContractJSON,NFTContractAddress);
-    const tokenContract = new web3.eth.Contract(tokenContractJSON,tokenContractAddress);
+    const tokenContract = new web3.eth.Contract(tokenContractJSON,tokenContractAddress); //Not in use in this script due to removed code at certain parts
 
     let NFTBalance = await NFTContract.methods.balanceOf(walletAddress).call();
     let walletNFTs = new Array[NFTBalance];
@@ -81,14 +93,7 @@ exports.handler = async (event) =>
     }
     else
     return sendResponse(500, {status: "ERROR", error: "Player not found"});
-    
-    if (playerRecord.Item.accessToken != accessToken)
-    {
-        //Log unauthorized access so that we can view it via CloudWatch
-        console.log("UNAUTHORIZED ACCESS: Access token of Player " + playerId + " is " + playerRecord.Item.accessToken + ", we were given " + accessToken);
-        return sendResponse(401, {status: "ERROR", error: "Access Denied"}); //unauthorized access
-    }
-
+            
     switch (opCode)
     {   
         //NOTE: Some cases have been removed, since this is just a sample
@@ -102,7 +107,7 @@ exports.handler = async (event) =>
             {
                 await updatePlayerData(playerId, "set lastTimedChestOpenTime = :ltcot", {":ltcot": currentTime});
                 tokenGainBoostForTimedChest = 40;
-                missionId = playerRecord.Item.lastNormalMissionCleared; //we will update this regardless of whether we get tokens or not
+                missionId = playerRecord.Item.lastNormalMissionCleared; //The last cleared mission id will determine how big our timed chest reward will be, and we need to initialize this for the fall-through below
             }
             else
             {
@@ -113,8 +118,7 @@ exports.handler = async (event) =>
         } //NOTE: We'll fall through to normal chest opening if the timed chest can be opened
         
         case (102): //Open chest for tokens
-        {
-            let gameData = await getGameData();
+        {            
             let random = getRandomNumber();
             
             let playerFlagged = playerRecord.Item.flagged;
@@ -128,23 +132,23 @@ exports.handler = async (event) =>
             }
                 
             let tokensToAdd = 0;
-            let tokenDropProbability = 0.5 + currentMissionId*0.01 + tokenDropProbabilityBoostForTimedChest;
+            let tokenDropProbability = 0.5 + currentMissionId * 0.01 + tokenDropProbabilityBoostForTimedChest;
             
             if (random <= tokenDropProbability)
             {
-                //first nullify dailyTokenCount to 0 before adding if lastTokenGotten time was yesterday based on epoch time
+                //first nullify dailyTokenCount to 0 before adding if last token earning time was yesterday based on epoch time
                 let chestTokensGainedToday = playerRecord.Item.chestTokensGainedToday;                                
                 let lastChestTokenGainTime = playerRecord.Item.lastChestTokenGainTime;
                 let yesterdayTimeLimit = getCurrentEpochTime() - (getCurrentEpochTime() % 86400);
                 
-                console.log("Your last coin drop was at "+ lastChestTokenGainTime + " and today started at "+yesterdayTimeLimit);
+                console.log("The last coin drop was at "+ lastChestTokenGainTime + " and today started at " + yesterdayTimeLimit);
                 
                 if (lastChestTokenGainTime != undefined)
                 {
                     //The last token gain was during yesterday (server time)
                     if (lastChestTokenGainTime < yesterdayTimeLimit)
                     {
-                        console.log ("This was yesterday (before "+ yesterdayTimeLimit +"), so your daily limit is replenished"); //TODO: This could be moved to the login phase
+                        console.log ("This was yesterday (before "+ yesterdayTimeLimit +"), so your daily limit is replenished");
                         chestTokensGainedToday = 0;
                     }
                 }
@@ -163,21 +167,20 @@ exports.handler = async (event) =>
                     let openingCheckInterval = 120; //2 minutes
 
                     //Observe how many chests we've opened within the last 5 mins or so. 10+ chests should alarm us that cheating may be going on, so set flagged = true for this player.
-                    if (chestOpenTimes[0] - chestOpenTimes[7] < openingCheckInterval) //8 chests opened in x minutes, may not be legit
+                    if (chestOpenTimes[0] - chestOpenTimes[7] < openingCheckInterval) //8 chests opened in 2 minutes, this is not likely to be legitimate
                     {
                         console.log("FLAG PLAYER " + playerId + " for opening too many chests in a short time");
                         await updatePlayerData(playerId, "set flagged = :f", {":f": true});
                     }
                     
                     await updateLatestChestOpenTimes(chestOpenTimes);
-
                 }
             }
-            //return: Send back how many tokens you got to the client, and the client will inform that you got Wacky Tokens
+            //return: Send back how many tokens you got to the client, and the client will inform the player that you got Wacky Tokens
             return sendResponse(200, {status: "OK", addedTokens: tokensToAdd});
         }
         
-        case (200): //Get timed chest timer
+        case (200): //Check whether a new timed chest is available
         {
             let currentTime = getCurrentEpochTime();
             let yesterdayTimeLimit = currentTime - (currentTime % 86400);
@@ -199,7 +202,7 @@ exports.handler = async (event) =>
 
             if (saveData.xp != undefined) //BASIC DATA
             {
-                //Do not save levels higher than levelCap, also cap gold and kibbles. Higher than max values should never be sent by the proper client, so we can be suspicious of cheating
+                //Do not save levels higher than levelCap, and also cap gold and kibbles. Higher than max values should never be sent by the proper client, so we can be suspicious of cheating
                 let xp = saveData.xp;
 
                 if (xp < dbSaveData.xp) //xp can never get lower
@@ -239,7 +242,7 @@ exports.handler = async (event) =>
 
                 if (normalMissionList.length >= totalNormalMissions || challengeMissionList.length >= totalChallengeMissions) 
                     return sendResponse(500, {status: "ERROR", message: "Save failed"});
-                else //go through all the missions and set attributes to "true" where needed. Note that nothing can ever be set to "false", and attempt to do so should probably result in flagging
+                else //go through all the missions and set attributes to "true" where needed. Note that none of these can ever be set back to "false", and attempting to do so should probably result in flagging
                 {
                     for (let i = 0; i < totalNormalMissions; i++)
                     {
@@ -248,7 +251,7 @@ exports.handler = async (event) =>
                             //if an attribute is true, make sure we never change it in the update
                             if (dbSaveData.normalMissionList[i].cleared) 
                             normalMissionList[i].cleared = true;
-                            else if (dbSaveData.normalMissionList[i].cleared && !normalMissionList[i].cleared) //a mission attribute is true in DB, but we're sending "false" value
+                            else if (dbSaveData.normalMissionList[i].cleared && !normalMissionList[i].cleared) //a mission attribute is true in the database, but we're sending "false" value
                             {
                                 flagPlayer = true;
                                 flagReason = "normal mission clear reset";
@@ -269,58 +272,13 @@ exports.handler = async (event) =>
                             normalMissionList[i] = dbSaveData.normalMissionList[i];
                         
                     }
-
-                    for (let i = 0; i < totalChallengeMissions; i++)
-                    {
-                        if (saveData.challengeMissionList[i] != undefined)
-                        {
-                            //if an attribute is true, make sure we never change it in the update
-                            if (dbSaveData.challengeMissionList[i].cleared) 
-                            challengeMissionList[i].cleared = true;
-                            else if (dbSaveData.challengeMissionList[i].cleared && !challengeMissionList[i].cleared) //a mission attribute is true in DB, but we're sending "false" value
-                            {
-                                flagPlayer = true;
-                                flagReason = "challenge mission clear reset";
-                            }
-
-                            if (dbSaveData.challengeMissionList[i].unlocked) //don't lock an unlocked mission. If we try to do so, there's no penalty though, as this would only be harmful for the player
-                            challengeMissionList[i].unlocked = true;
-
-                            if (dbSaveData.challengeMissionList[i].rewardFetched) 
-                            challengeMissionList[i].rewardFetched = true;
-                            else if (dbSaveData.challengeMissionList[i].rewardFetched && !challengeMissionList[i].rewardFetched) //a mission attribute is true in DB, but we're sending "false" value
-                            {
-                                flagPlayer = true;
-                                flagReason = "challenge mission reward fetch reset";
-                            }
-                        }
-                        else
-                            challengeMissionList[i] = dbSaveData.challengeMissionList[i];
-                    }
                 }
-                saveDataExpression += "saveData.normalMissionList = :nml, saveData.challengeMissionList = :cml,";
-                saveDataParams[":nml"] = normalMissionList;
-                saveDataParams[":cml"] = challengeMissionList;
-                
+                saveDataExpression += "saveData.normalMissionList = :nml,";
+                saveDataParams[":nml"] = normalMissionList;                
             }
 
             if (saveData.allItems != undefined) //verify that item levels don't go over the max
             {
-                let equippedItemList = saveData.allItems.equippedItemList;
-                if (equippedItemList != undefined) //EQUIPPED ITEM DATA
-                {
-                    for (let i = 0; i < equippedItemList.length; i++)
-                    {
-                        if (equippedItemList[i].level > equippedItemList[i].rank*10 && equippedItemList[i].rank <= maxItemRank)
-                        {
-                            flagPlayer = true;
-                            flagReason = "equipped item level too high: "+ equippedItemList[i].level;
-                        }
-                    }
-                    saveDataExpression += "saveData.allItems.equippedItemList = :eil,";
-                    saveDataParams[":eil"] = equippedItemList;
-                }
-                
                 let itemList = saveData.allItems.itemList;
                 if (itemList != undefined) //ITEM LIST DATA
                 {
@@ -329,7 +287,7 @@ exports.handler = async (event) =>
                         if (itemList[i].level > itemList[i].rank*10 && itemList[i].rank <= maxItemRank)
                         {
                             flagPlayer = true;
-                            flagReason = "list item level too high: "+ itemList[i].level;
+                            flagReason = "list item level too high: " + itemList[i].level;
                         }
                     }
                 }
@@ -347,7 +305,7 @@ exports.handler = async (event) =>
                     skillLevelSum += skillList[i].level;
                 
                 //TODO: Additional checks regarding whether we can have a skill at a certain hero level
-                //TODO: Check if we can have an enemy skill level > 0 based on the enemy skill stats. E.g. 0 kills on all and level 1 is not possible without cheating
+                //TODO: Check if we can have an enemy skill level > 0 based on the enemy skill stats. E.g. 0 kills on all enemy skill stats and level 1 is not possible without cheating
                 //TODO: //if level < wackyBurstUnlockLevels[i] && equippedWackyBurst == wackyBursts[i], i.e. we've equipped a skill we shouldn't have access to yet
                 if (skillLevelSum > maxSkillLevelSum)
                 {
@@ -381,9 +339,8 @@ exports.handler = async (event) =>
 
             if (flagPlayer)
             {
-                console.log("Flagging player "+playerId + " with data: "+ JSON.stringify({timeStamp: getCurrentEpochTime(), reason: flagReason},2));
-                await updatePlayerData(playerId, "set flagged = :f, flagData = :fd", {":f": true, 
-                    ":fd": {timeStamp: getCurrentEpochTime(), reason: flagReason}});
+                console.log("Flagging player " + playerId + " with data: " + JSON.stringify({timeStamp: getCurrentEpochTime(), reason: flagReason},2));
+                await updatePlayerData(playerId, "set flagged = :f, flagData = :fd", {":f": true, ":fd": {timeStamp: getCurrentEpochTime(), reason: flagReason}});
             }
             else
                 await updatePlayerData(playerId, saveDataExpression, saveDataParams);
@@ -394,18 +351,7 @@ exports.handler = async (event) =>
         case (401): //load game
         {
             return sendResponse(200, {status: saveData});
-        }
-    
-        case (500): //logging in, should really be in websocket connection open
-        {
-            let NFTBalance = await NFTContract.methods.balanceOf(walletAddress).call();
-
-            if (NFTBalance > 0)
-            console.log("We own an NFT and can log in!");
-
-            return sendResponse(200, {NFTsOwned: NFTBalance});
-        }
-
+        }    
     }
 };
 
@@ -414,11 +360,10 @@ async function addChestTokens(playerId, amount, chestTokensGainedToday, currentT
     //NOTE: Earned tokens are always added to the database first, and the player will have to activate a separate operation to mint the tokens.             
     await updatePlayerTokenCounts(playerId, "set chestTokensGainedToday = :ctgt, lastChestTokenGainTime = :lctgt, totalTokens = :tt", 
         {
-            ":ctgt": chestTokensGainedToday+amount,
+            ":ctgt": chestTokensGainedToday + amount,
             ":lctgt": getCurrentEpochTime(),
-            ":tt": currentTotalTokens+amount
-        });           
-    
+            ":tt": currentTotalTokens + amount
+        });               
 }
 
 async function updatePlayerTokenCounts(playerId, updateExpression, attributeValues)
@@ -472,42 +417,6 @@ async function updateLatestChestOpenTimes(chestOpenTimes)
     chestOpenTimes[0] = getCurrentEpochTime();
     
     await updatePlayerData(playerId, "set latestChestOpenTimes = :lcot", {":lcot": chestOpenTimes});
-}
-
-async function updateNormalMissionData(playerId, missionId)
-{
-    const params = {
-        TableName: playerTableName,
-        Key: {
-            "id": playerId
-        },
-        UpdateExpression: "set lastNormalMissionCleared = :lnmc",
-        ExpressionAttributeValues:{":lnmc": missionId},
-    };
-    try {
-      return documentClient.update(params).promise();
-    }
-    catch (err) {
-      console.log("Error updating last cleared normal mission "+err);
-      throw err;
-    }
-}
-
-async function getGameData()
-{
-    const params = {
-        TableName: generalTableName,
-        Key: {
-            "id": 0
-        }
-    };
-    try {
-      return documentClient.get(params).promise();
-    }
-    catch (err) {
-      console.log("Error getting general table data: "+err);
-      throw err;
-    }
 }
 
 function getCurrentEpochTime()
