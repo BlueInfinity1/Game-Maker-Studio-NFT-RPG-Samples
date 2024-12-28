@@ -166,27 +166,33 @@ exports.handler = async (event) => {
             }
         }
     
-        // Generate a JWT token for the player
-        const accessToken = jwt.sign(
-            {
-                walletAddress: walletAddress,
-                nftIds: nftIdList,
-                exp: Math.floor(Date.now() / 1000) + accessTokenExpirationTime, // Token expiration time
-            },
-            jwtSecretKey
-        );
-    
-        console.log("Give wallet " + walletAddress + " an accessToken: " + accessToken);
-    
-        // Store the generated access token in the database
-        try {
-            await updateTokenData(walletAddress, "set accessToken = :at", {
-                ":at": { value: accessToken },
-            });
-            console.log("Updated access token, value: " + accessToken);
-        } catch (e) {
-            console.log("Error updating access token in the database: ", e);
+        let accessToken;
+
+        // If the client provided a valid access token, reuse it
+        if (sentAccessToken && accessTokenData?.Item?.accessToken?.value === sentAccessToken) {
+            console.log("Valid access token provided. Reusing existing token.");            
+        } else {
+            // Generate a new access token
+            accessToken = jwt.sign(
+                {
+                    walletAddress: walletAddress,
+                    nftIds: nftIdList,
+                    exp: Math.floor(Date.now() / 1000) + accessTokenExpirationTime, // Token expiration time
+                },
+                jwtSecretKey
+            );
+        
+            // Store the new access token in the database
+            try {
+                await updateTokenData(walletAddress, "set accessToken = :at", {
+                    ":at": { value: accessToken },
+                });
+                console.log("Updated access token, value: " + accessToken);
+            } catch (e) {
+                console.log("Error updating access token in the database: ", e);
+            }
         }
+        
     
         // Return the access token and the player's NFTs
         return sendResponse(200, { op: 500, status: "OK", accessToken: accessToken, NFTsOwned: walletNFTs });
