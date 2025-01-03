@@ -20,7 +20,7 @@ const alchemyAPIKey = "_vDGebu4wFiRF3sKkb-_u5JbapUjnp1U"; //mock-key
 const alchemyAPIUrl = "https://eth-rinkeby.alchemyapi.io/v2/" + alchemyAPIKey;
 const privateKey = "138dedfeedd075afc6123d1c19d5f5227873b8a3478381633fa9933eb408d705"; //mock-key
 
-//PROD ENV VARIABLES HERE (REMOVED)
+//TEST AND PROD ENV VARIABLES HERE (REMOVED)
 
 //BLOCKCHAIN-RELATED VARIABLES
 const { createAlchemyWeb3 } = require("@alch/alchemy-web3");
