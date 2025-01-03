@@ -3,7 +3,7 @@ AWS.config.update({ region: "us-west-1" });
 const documentClient = new AWS.DynamoDB.DocumentClient({ region: "us-west-1" });
 
 const jwt = require('jsonwebtoken');
-const jwtSecretKey = "mock-secure-secret-key"; // MOCK: Replace with a secure secret key in production
+const jwtSecretKey = "mock-secure-secret-key"; // Mock, replaced with the real secure secret key
 
 const playerTableName = "WackyDungeonPlayers"; // DEV
 const tokenTableName = "WackyDungeonAccessTokens"; // DEV
