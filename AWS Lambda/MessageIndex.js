@@ -15,7 +15,7 @@ const totalChallengeMissions = 30;
 
 //DEV
 const playerTableName = "WackyDungeonPlayers";
-const generalTableName = "WackyDungeonGeneralTable"; //this table contains ubiquitous data required in both dev and prod versions
+const generalTableName = "WackyDungeonGeneralTable"; //this table contains ubiquitous data required in all dev, test and prod versions
 const alchemyAPIKey = "_vDGebu4wFiRF3sKkb-_u5JbapUjnp1U"; //mock-key
 const alchemyAPIUrl = "https://eth-rinkeby.alchemyapi.io/v2/" + alchemyAPIKey;
 const privateKey = "138dedfeedd075afc6123d1c19d5f5227873b8a3478381633fa9933eb408d705"; //mock-key
