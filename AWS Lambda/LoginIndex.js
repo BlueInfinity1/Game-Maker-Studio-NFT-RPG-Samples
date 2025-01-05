@@ -20,7 +20,6 @@ const GENERAL_TABLE_NAME = process.env[`GENERAL_TABLE_NAME_${STAGE.toUpperCase()
 
 const NFT_CONTRACT_ADDRESS = process.env[`NFT_CONTRACT_ADDRESS_${STAGE.toUpperCase()}`];
 const TRAIT_CONTRACT_ADDRESS = process.env[`TRAIT_CONTRACT_ADDRESS_${STAGE.toUpperCase()}`];
-const ALCHEMY_API_URL = process.env[`ALCHEMY_API_URL_${STAGE.toUpperCase()}`];
 
 const web3 = createAlchemyWeb3(ALCHEMY_API_URL);
 
