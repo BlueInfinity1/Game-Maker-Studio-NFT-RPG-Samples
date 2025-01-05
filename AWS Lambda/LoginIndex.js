@@ -23,9 +23,6 @@ const TRAIT_CONTRACT_ADDRESS = process.env[`TRAIT_CONTRACT_ADDRESS_${STAGE.toUpp
 
 const web3 = createAlchemyWeb3(ALCHEMY_API_URL);
 
-const NFT_CONTRACT_JSON = require("./ABI/Heroes-ABI.json");
-const TRAIT_CONTRACT_JSON = require("./ABI/Traits-ABI.json");
-
 const ACCESS_TOKEN_EXPIRATION_TIME = 86400; // 24h in seconds
 
 exports.handler = async (event) => 
