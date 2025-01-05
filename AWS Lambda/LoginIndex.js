@@ -3,29 +3,30 @@ AWS.config.update({ region: "us-west-1" });
 const documentClient = new AWS.DynamoDB.DocumentClient({ region: "us-west-1" });
 
 const jwt = require('jsonwebtoken');
-const jwtSecretKey = "mock-secure-secret-key"; // Mock, replaced with the real secure secret key
-
-const playerTableName = "WackyDungeonPlayers"; // DEV
-const tokenTableName = "WackyDungeonAccessTokens"; // DEV
-const generalTableName = "WackyDungeonGeneralTable";
-
-// Blockchain-related mock values
 const ethers = require('ethers');
-const { createAlchemyWeb3 } = require("@alch/alchemy-web3");
-const alchemyAPIKey = "_vDGebu4wFiZR3sKkb-_u5JbafUjnp1U"; // DEV
-const alchemyAPIUrl = "https://eth-rinkeby.alchemyapi.io/v2/" + alchemyAPIKey; // DEV, Rinkeby
+const { createAlchemyWeb3 } = require('@alch/alchemy-web3');
 
-const NFTContractJSON = require("./ABI/Heroes-ABI.json");
-const NFTContractAddress = "0xD318024a96e6c9A53c624D4d175c327F0D9ec405";
+const STAGE = process.env.STAGE || "dev";
 
-const traitContractJSON = require("./ABI/Traits-ABI.json");
-const traitContractAddress = "0x212b5D25641439A84Aa086349b3047d7C124915B";
+const JWT_SECRET_KEY = process.env[`JWT_SECRET_KEY_${STAGE.toUpperCase()}`];
+const ALCHEMY_API_KEY = process.env[`ALCHEMY_API_KEY_${STAGE.toUpperCase()}`];
+const PLAYER_TABLE_NAME = process.env[`PLAYER_TABLE_NAME_${STAGE.toUpperCase()}`];
+const TOKEN_TABLE_NAME = process.env[`TOKEN_TABLE_NAME_${STAGE.toUpperCase()}`];
+const GENERAL_TABLE_NAME = process.env[`GENERAL_TABLE_NAME_${STAGE.toUpperCase()}`];
 
-const web3 = createAlchemyWeb3(alchemyAPIUrl);
+const NFT_CONTRACT_ADDRESS = process.env[`NFT_CONTRACT_ADDRESS_${STAGE.toUpperCase()}`];
+const TRAIT_CONTRACT_ADDRESS = process.env[`TRAIT_CONTRACT_ADDRESS_${STAGE.toUpperCase()}`];
+const ALCHEMY_API_URL = process.env[`ALCHEMY_API_URL_${STAGE.toUpperCase()}`];
 
-const accessTokenExpirationTime = 86400; // 24 hours in seconds
+const web3 = createAlchemyWeb3(ALCHEMY_API_URL);
 
-exports.handler = async (event) => {
+const NFT_CONTRACT_JSON = require("./ABI/Heroes-ABI.json");
+const TRAIT_CONTRACT_JSON = require("./ABI/Traits-ABI.json");
+
+const ACCESS_TOKEN_EXPIRATION_TIME = 86400; // 24h in seconds
+
+exports.handler = async (event) => 
+{
     const body = JSON.parse(event.body);
     const walletAddress = body.walletAddress;
     const signature = body.signature;
@@ -37,107 +38,79 @@ exports.handler = async (event) => {
         + "this message. This won't cost you anything!\n\n"
         + "Your login ID: " + nonce + "\n(You don't need to memorize this)";
 
-    if (sentAccessToken) {
-        if (!walletAddress) return sendResponse(401, "ACCESS DENIED");
+    if (sentAccessToken && !walletAddress)
+        return sendResponse(401, "ACCESS DENIED");
+        
+    try 
+    {
+        let accessTokenData = await getTokenData(walletAddress);
+        const storedToken = accessTokenData.Item?.accessToken?.value;
 
-        try {
-            let accessTokenData = await getTokenData(walletAddress);
-            const storedToken = accessTokenData.Item?.accessToken?.value;
-
-            try {
-                const decodedToken = jwt.verify(sentAccessToken, jwtSecretKey);
-                if (decodedToken.walletAddress !== walletAddress) {
-                    console.log("Token walletAddress mismatch.");
-                    return sendResponse(401, "ACCESS DENIED");
-                }
-                console.log("JWT verified successfully for walletAddress: " + walletAddress);
-            } catch (err) {
-                console.log("JWT verification failed: " + err.message);
+        try 
+        {
+            const decodedToken = jwt.verify(sentAccessToken, JWT_SECRET_KEY);
+            if (decodedToken.walletAddress !== walletAddress) 
+            {
+                console.log("Token walletAddress mismatch.");
                 return sendResponse(401, "ACCESS DENIED");
             }
-
-            if (!storedToken || storedToken !== sentAccessToken) {
-                console.log("Stored token mismatch. Prompt user to retry.");
-                return sendResponse(200, { op: 500, status: "RETRY", message: "RETRY LOGIN" });
-            }
-        } catch (e) {
-            console.log("Error retrieving token data.");
-            return sendResponse(200, { op: 500, status: "RETRY", message: "RETRY LOGIN" });
-        }
-    } else {        
-      // Check if the nonce has expired
-        try {
-            let gameData = await getGameData("validNonces");
-            let validNonces = gameData.Item?.validNonces || [];
-            let nonceData = validNonces.find(nonceObj => nonceObj.id === nonce);
-        
-            if (nonceData) {
-                if (nonceData.expirationTime < getCurrentEpochTime()) {
-                    console.log(`Nonce ${nonce} has expired. Expired at ${nonceData.expirationTime}, current time is ${getCurrentEpochTime()}.`
-                    );
-                    return sendResponse(200, {
-                        op: 500,
-                        status: "EXPIRED",
-                        message: "RETRY LOGIN",
-                    });
-                }
-            } else {
-                console.log(`Nonce ${nonce} is not present in the list and may have expired.`);
-                return sendResponse(200, {
-                    op: 500,
-                    status: "EXPIRED",
-                    message: "RETRY LOGIN",
-                });
-            }
-        } catch (error) {
-            console.error("Error checking nonce expiration: ", error);
-            return sendResponse(200, {
-                op: 500,
-                status: "RETRY",
-                message: "RETRY LOGIN",
-            });
-        }
-        
-        // Verify the signature
-        if (!verifySignature(message, walletAddress, signature)) {
-            console.log(`Access denied for wallet ${walletAddress}. Message: "${message}", Signature: "${signature}".`);
+            console.log("JWT verified successfully for walletAddress: " + walletAddress);
+        } 
+        catch (error) 
+        {
+            console.log("JWT verification failed: " + error.message);
             return sendResponse(401, "ACCESS DENIED");
         }
+
+        if (!storedToken || storedToken !== sentAccessToken)
+            return sendResponse(200, { op: 500, status: "RETRY", message: "RETRY LOGIN" });
+    } 
+    catch (error) 
+    {
+        return sendResponse(200, { op: 500, status: "RETRY", message: "RETRY LOGIN" });
     }
 
-    // After access token and signature verification, proceed to checking all NFTs owned by the player
-    const NFTContract = new web3.eth.Contract(NFTContractJSON, NFTContractAddress);
+    try 
+    {
+        let gameData = await getGameData("validNonces");
+        let validNonces = gameData.Item?.validNonces || [];
+        let nonceData = validNonces.find(nonceObj => nonceObj.id === nonce);
 
-    try {
-        // Check the number of NFTs owned by the player
+        if (!nonceData || nonceData.expirationTime < getCurrentEpochTime())
+            return sendResponse(200, { op: 500, status: "EXPIRED", message: "RETRY LOGIN" });
+    } 
+    catch (error) 
+    {
+        return sendResponse(200, { op: 500, status: "RETRY", message: "RETRY LOGIN" });
+    }
+
+    if (!verifySignature(message, walletAddress, signature))
+        return sendResponse(401, "ACCESS DENIED");
+
+    const NFTContract = new web3.eth.Contract(NFT_CONTRACT_JSON, NFT_CONTRACT_ADDRESS);
+
+    try 
+    {
         let NFTBalance = await NFTContract.methods.balanceOf(walletAddress).call();
-    
-        // If the player owns no NFTs, send an empty response
-        if (NFTBalance == 0) {
+
+        if (NFTBalance == 0)
             return sendResponse(200, { op: 500, status: "OK", NFTsOwned: {} });
-        }
-    
-        const traitContract = new web3.eth.Contract(traitContractJSON, traitContractAddress);
+
+        const traitContract = new web3.eth.Contract(TRAIT_CONTRACT_JSON, TRAIT_CONTRACT_ADDRESS);
         let walletNFTs = [];
         let nftIdList = [];
-    
-        // Iterate over the NFTs owned by the player
-        for (let i = 0; i < NFTBalance; i++) {
-            try {
-                // Get the current NFT ID
+
+        for (let i = 0; i < NFTBalance; i++) 
+        {
+            try 
+            {
                 const currNFTId = await NFTContract.methods.tokenOfOwnerByIndex(walletAddress, i).call();
-    
-                // Retrieve player data associated with this NFT
                 const playerRecord = await getPlayerData(currNFTId);
-    
-                // Retrieve metadata for the NFT
                 const NFTMetadata = await traitContract.methods.metadata(currNFTId).call();
-    
-                // Extract and decode the metadata payload (JSON in base64 format)
-                const metadataPayload = NFTMetadata.substring(NFTMetadata.indexOf(",") + 1); // Remove "data:application/json;base64,"
+
+                const metadataPayload = NFTMetadata.substring(NFTMetadata.indexOf(",") + 1); 
                 const JSONMetadata = JSON.parse(Buffer.from(metadataPayload, 'base64').toString('ascii'));
-        
-                // Add NFT data to the walletNFTs array
+
                 walletNFTs.push({
                     id: currNFTId,
                     currentXp: playerRecord.Item.saveData.xp,
@@ -158,89 +131,82 @@ exports.handler = async (event) => {
                     spUsage: JSONMetadata.attributes[13].value,
                     healing: JSONMetadata.attributes[14].value,
                 });
-    
-                // Add NFT ID to the list
+
                 nftIdList.push(currNFTId.toString());
-            } catch (err) {
-                console.log(`Error processing NFT at index ${i}: `, err);
+            } 
+            catch (error) 
+            {
+                console.log(`Error processing NFT at index ${i}: `, error);
             }
         }
-    
+
         let accessToken;
 
-        // If the client provided a valid access token, reuse it
-        if (sentAccessToken && accessTokenData?.Item?.accessToken?.value === sentAccessToken) {
-            console.log("Valid access token provided. Reusing existing token.");            
-        } else {
-            // Generate a new access token
+        if (sentAccessToken && accessTokenData?.Item?.accessToken?.value === sentAccessToken)
+            console.log("Valid access token provided. Reusing existing token.");
+        else 
+        {
             accessToken = jwt.sign(
                 {
                     walletAddress: walletAddress,
                     nftIds: nftIdList,
-                    exp: Math.floor(Date.now() / 1000) + accessTokenExpirationTime, // Token expiration time
+                    exp: Math.floor(Date.now() / 1000) + ACCESS_TOKEN_EXPIRATION_TIME,
                 },
-                jwtSecretKey
+                JWT_SECRET_KEY
             );
-        
-            // Store the new access token in the database
-            try {
+
+            try 
+            {
                 await updateTokenData(walletAddress, "set accessToken = :at", {
                     ":at": { value: accessToken },
                 });
-                console.log("Updated access token, value: " + accessToken);
-            } catch (e) {
-                console.log("Error updating access token in the database: ", e);
+            } 
+            catch (error) 
+            {
+                console.log("Error updating access token in the database: ", error);
             }
         }
-        
-    
-        // Return the access token and the player's NFTs
+
         return sendResponse(200, { op: 500, status: "OK", accessToken: accessToken, NFTsOwned: walletNFTs });
-    } catch (err) {
-        console.log("Unexpected error during NFT processing: ", err);
+    } 
+    catch (error) 
+    {
         return sendResponse(500, { op: 500, status: "ERROR", message: "An error occurred during login." });
     }
-    
 };
 
-function verifySignature(message, address, signature) {
-    try {
-        const signerAddress = ethers.utils.verifyMessage(message, signature);
-        return signerAddress === address;
-    } catch (e) {
-        console.log("Error in signature verification: ", e);
-        return false;
-    }
-}
-
-async function getGameData(projectionExpression) {
+async function getGameData(projectionExpression)
+{
     const params = {
-        TableName: generalTableName,
+        TableName: GENERAL_TABLE_NAME,
         Key: { id: 0 },
         ProjectionExpression: projectionExpression,
     };
     return documentClient.get(params).promise();
 }
 
-async function getPlayerData(playerId) {
+async function getPlayerData(playerId)
+{
     const params = {
-        TableName: playerTableName,
+        TableName: PLAYER_TABLE_NAME,
         Key: { id: playerId },
     };
     return documentClient.get(params).promise();
 }
 
-async function getTokenData(walletAddress) {
+async function getTokenData(walletAddress)
+{
     const params = {
-        TableName: tokenTableName,
+        TableName: TOKEN_TABLE_NAME,
         Key: { walletAddress },
     };
     return documentClient.get(params).promise();
 }
 
-async function updateTokenData(walletAddress, updateExpression, attributeValues) {
+async function updateTokenData(walletAddress, updateExpression, attributeValues)
+{
     const params = {
-        TableName: tokenTableName,
+        TableName: TOKEN_TABLE_NAME,
         Key: { walletAddress },
         UpdateExpression: updateExpression,
         ExpressionAttributeValues: attributeValues,
@@ -248,7 +214,8 @@ async function updateTokenData(walletAddress, updateExpression, attributeValues)
     return documentClient.update(params).promise();
 }
 
-function sendResponse(statusCode, message) {
+function sendResponse(statusCode, message)
+{
     return {
         statusCode,
         headers: {
