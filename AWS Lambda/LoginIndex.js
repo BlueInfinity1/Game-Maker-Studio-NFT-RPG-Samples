@@ -9,7 +9,11 @@ const { createAlchemyWeb3 } = require('@alch/alchemy-web3');
 const STAGE = process.env.STAGE || "dev";
 
 const JWT_SECRET_KEY = process.env[`JWT_SECRET_KEY_${STAGE.toUpperCase()}`];
+
+const ALCHEMY_API_BASE_URL = process.env[`ALCHEMY_API_BASE_URL_${STAGE.toUpperCase()}`];
 const ALCHEMY_API_KEY = process.env[`ALCHEMY_API_KEY_${STAGE.toUpperCase()}`];
+const ALCHEMY_API_URL = `${ALCHEMY_API_BASE_URL}/${ALCHEMY_API_KEY}`;
+
 const PLAYER_TABLE_NAME = process.env[`PLAYER_TABLE_NAME_${STAGE.toUpperCase()}`];
 const TOKEN_TABLE_NAME = process.env[`TOKEN_TABLE_NAME_${STAGE.toUpperCase()}`];
 const GENERAL_TABLE_NAME = process.env[`GENERAL_TABLE_NAME_${STAGE.toUpperCase()}`];
