@@ -38,6 +38,7 @@ exports.handler = async (event) =>
         + "this message. This won't cost you anything!\n\n"
         + "Your login ID: " + nonce + "\n(You don't need to memorize this)";
 
+    // Validate JWT if an access token is sent
     if (sentAccessToken && !walletAddress)
         return sendResponse(401, "ACCESS DENIED");
         
@@ -70,6 +71,7 @@ exports.handler = async (event) =>
         return sendResponse(200, { op: 500, status: "RETRY", message: "RETRY LOGIN" });
     }
 
+    // Validate the nonce to ensure it's still valid
     try 
     {
         let gameData = await getGameData("validNonces");
@@ -84,6 +86,7 @@ exports.handler = async (event) =>
         return sendResponse(200, { op: 500, status: "RETRY", message: "RETRY LOGIN" });
     }
 
+    // Verify the user's wallet signature for authentication
     if (!verifySignature(message, walletAddress, signature))
         return sendResponse(401, "ACCESS DENIED");
 
@@ -91,6 +94,7 @@ exports.handler = async (event) =>
 
     try 
     {
+        // Fetch the NFT balance of the user's wallet
         let NFTBalance = await NFTContract.methods.balanceOf(walletAddress).call();
 
         if (NFTBalance == 0)
@@ -142,6 +146,7 @@ exports.handler = async (event) =>
 
         let accessToken;
 
+        // Reuse or generate a new JWT access token
         if (sentAccessToken && accessTokenData?.Item?.accessToken?.value === sentAccessToken)
             console.log("Valid access token provided. Reusing existing token.");
         else 
